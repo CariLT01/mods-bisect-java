@@ -31,13 +31,23 @@ public class DependencyResolver {
         try {
             this.manualOverrides = this.loadManualOverrides(manualOverridesPath);
         } catch (IOException e) {
-            e.printStackTrace();
+            try {
+                this.saveTemplateManualOverrides(manualOverridesPath);
+            } catch (IOException e2) {
+                e2.printStackTrace();
+            }
+
         }
     }
 
     private Map<String, List<String>> loadManualOverrides(String manualOverridesPath) throws IOException {
         ManualOverrides data = mapper.readValue(new File(manualOverridesPath), ManualOverrides.class);
         return data.overrides;
+    }
+
+    private void saveTemplateManualOverrides(String manualOverridesPath) throws IOException {
+        ManualOverrides templateData = new ManualOverrides();
+        prettyprintMapper.writeValue(new File(manualOverridesPath), templateData);
     }
 
     private Set<String> getDependencies(String modId, Set<String> dependencies) {
@@ -65,6 +75,9 @@ public class DependencyResolver {
         byte[] bytes = new byte[jarFile.remaining()];
         jarFile.get(bytes);
 
+        boolean configFileFound = false;
+        byte[] configFileData = new byte[0];
+
         // open once, for jar in jar
         try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(bytes))) {
             ZipEntry entry;
@@ -81,64 +94,57 @@ public class DependencyResolver {
                     this.recursiveParseJar(byteBuffer, dependencyList, modList);
                 }
 
-                zis.closeEntry();
-            }
-        }
-
-        // open second time, for toml
-        boolean foundConfigFile = false;
-
-        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(bytes))) {
-            ZipEntry entry;
-
-            while ((entry = zis.getNextEntry()) != null) {
-                String name = entry.getName();
                 if (name.equals("META-INF/neoforge.mods.toml")) {
-                    byte[] data = zis.readAllBytes();
-
-                    TomlParseResult result = Toml.parse(new String(data, StandardCharsets.UTF_8));
-                    ModFile tomlData = ModParser.parse(result);
-
-
-
-                    if (tomlData.dependencies != null) {
-                        for (String modId : tomlData.dependencies.keySet()) {
-                            for (Dependency dep : tomlData.dependencies.get(modId)) {
-                                String dependency_id = dep.modId;
-                                String required = dep.type;
-
-                                if (!(required == null) && !Objects.equals(required, "") &&  !required.equalsIgnoreCase("required")) {
-                                    continue;
-                                }
-
-                                if (Objects.equals(dependency_id, "minecraft")) continue;
-                                if (Objects.equals(dependency_id, "neoforge")) continue;
-
-                                dependencyList.add(dependency_id);
-                            }
-                        }
-                    } else {
-                        System.out.println("dependencies is null");
-                    }
-
-
-                    for (Mod mod : tomlData.mods) {
-                        modList.add(mod.modId);
-                    }
-
-                    // stuff cannot require itself, make sure to remove
-                    for (String modId : modList) {
-                        dependencyList.remove(modId);
-                    }
-
-                    return new DependencyResolverNodeResult(dependencyList, modList);
+                    configFileFound = true;
+                    configFileData = zis.readAllBytes();
                 }
 
                 zis.closeEntry();
             }
         }
 
-        //System.out.println("error: MODS.toml not found!");
+        if (configFileFound) {
+            TomlParseResult result = Toml.parse(new String(configFileData, StandardCharsets.UTF_8));
+            ModFile tomlData = ModParser.parse(result);
+
+
+
+            if (tomlData.dependencies != null) {
+                for (String modId : tomlData.dependencies.keySet()) {
+                    for (Dependency dep : tomlData.dependencies.get(modId)) {
+                        String dependency_id = dep.modId;
+                        String required = dep.type;
+
+                        if (!(required == null) && !Objects.equals(required, "") &&  !required.equalsIgnoreCase("required")) {
+                            continue;
+                        }
+
+                        if (Objects.equals(dependency_id, "minecraft")) continue;
+                        if (Objects.equals(dependency_id, "neoforge")) continue;
+
+                        dependencyList.add(dependency_id);
+                    }
+                }
+            } else {
+                System.out.println("dependencies is null");
+            }
+
+            for (Mod mod : tomlData.mods) {
+                modList.add(mod.modId);
+            }
+
+            // stuff cannot require itself, make sure to remove
+            for (String modId : modList) {
+                dependencyList.remove(modId);
+            }
+        }
+
+
+
+
+
+
+
 
         return new DependencyResolverNodeResult(dependencyList, modList);
     }

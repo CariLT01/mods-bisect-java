@@ -15,6 +15,7 @@ dependencies {
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.0'
     implementation 'org.tomlj:tomlj:1.1.1'
     compileOnly 'org.jetbrains:annotations:24.1.0'
+    implementation 'com.github.kwhat:jnativehook:2.2.2'
 }
 
 test {
