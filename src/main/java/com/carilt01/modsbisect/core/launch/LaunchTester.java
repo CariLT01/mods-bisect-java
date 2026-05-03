@@ -2,6 +2,7 @@ package com.carilt01.modsbisect.core.launch;
 
 import com.carilt01.modsbisect.core.Unit;
 import com.github.kwhat.jnativehook.GlobalScreen;
+import com.github.kwhat.jnativehook.NativeHookException;
 import com.github.kwhat.jnativehook.keyboard.NativeKeyEvent;
 import com.github.kwhat.jnativehook.keyboard.NativeKeyListener;
 import org.jetbrains.annotations.NotNull;
@@ -14,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -23,9 +25,31 @@ import java.util.concurrent.atomic.AtomicReference;
 public class LaunchTester {
 
     private final String modsPath;
-    private final String launchCommand;
+    private final List<String> launchCommand;
 
-    public LaunchTester(@NotNull  String modsPath, @NotNull  String launchCommand) {
+    static {
+        // Register the native hook once for the entire JVM lifetime
+        try {
+            if (!GlobalScreen.isNativeHookRegistered()) {
+                GlobalScreen.registerNativeHook();
+            }
+        } catch (NativeHookException e) {
+            throw new ExceptionInInitializerError("Cannot register global native hook: " + e.getMessage());
+        }
+
+        // Cleanly unregister the hook when the JVM exits
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                if (GlobalScreen.isNativeHookRegistered()) {
+                    GlobalScreen.unregisterNativeHook();
+                }
+            } catch (NativeHookException e) {
+                System.out.println("Failed to unregister native hook on shutdown" + e);
+            }
+        }));
+    }
+
+    public LaunchTester(@NotNull  String modsPath, @NotNull List<String> launchCommand) {
         this.modsPath = modsPath;
         this.launchCommand = launchCommand;
     }
@@ -64,11 +88,9 @@ public class LaunchTester {
         outputThread.setDaemon(true);
         outputThread.start();
 
-        GlobalScreen.registerNativeHook();
-
         NativeKeyListener listener = new NativeKeyListener() {
             @Override
-            public void nativeKeyTyped(NativeKeyEvent e) {
+            public void nativeKeyPressed(NativeKeyEvent e) {
                 if (result.get() != null) return;
 
                 if (e.getKeyCode() == NativeKeyEvent.VC_Y) {
@@ -82,10 +104,11 @@ public class LaunchTester {
         };
 
         GlobalScreen.addNativeKeyListener(listener);
-        process.waitFor();
-
-        GlobalScreen.removeNativeKeyListener(listener);
-        GlobalScreen.unregisterNativeHook();
+        try {
+            process.waitFor();
+        } finally {
+            GlobalScreen.removeNativeKeyListener(listener);
+        }
 
         if (result.get() == null) {
             System.out.println("Process detected crashed");
@@ -99,18 +122,33 @@ public class LaunchTester {
     private List<String> unitToFiles(List<Unit> units) {
         List<String> files = new ArrayList<>();
         for (Unit u : units) {
-            files.add(Path.of(u.rootJar()).getFileName().toString());
+            for (String jar : u.jars()) {
+                System.out.println("DEBUG: Unit has jar: " + jar);
+                files.add(Path.of(jar).getFileName().toString());
+            }
         }
         return files;
     }
 
     private boolean testInternal(List<Unit> units) throws Exception {
+
+
+
+        Path cwd = Paths.get("").toAbsolutePath();
+
         Path modsPathObj = Path.of(modsPath);
-        Path tempPathObj = Path.of("temp");
+        Path tempPathObj = cwd.resolve("temp");
+        Files.createDirectories(tempPathObj);
+
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(modsPathObj)) {
             for (Path entry : stream) {
-                Path temporaryPath = tempPathObj.resolve(entry.getFileName());
-                Files.move(entry, temporaryPath);
+                try {
+                    Path temporaryPath = tempPathObj.resolve(entry.getFileName());
+                    Files.move(entry, temporaryPath);
+                } catch (IOException e) {
+                    System.out.printf("error: failed to move file: %s\n", e.getMessage());
+                }
+
             }
         }
 
@@ -121,13 +159,21 @@ public class LaunchTester {
             Path src = tempPathObj.resolve(jarBaseName);
             Path dst = modsPathObj.resolve(jarBaseName);
 
-            Files.move(src, dst);
+            try {
+                Files.move(src, dst);
+
+            } catch (IOException e) {
+                System.out.printf("Failed to move: %s\n", e.getMessage());
+            }
         }
 
         return this.launchAndTest();
     }
 
     public boolean test(List<Unit> units) throws Exception {
+
+        System.out.printf("Testing with %d units\n", units.size());
+
         return this.testInternal(units);
     }
 }

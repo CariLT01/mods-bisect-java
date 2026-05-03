@@ -1,7 +1,9 @@
 package com.carilt01.modsbisect.core.algorithms.quickxplain;
 
+import com.carilt01.modsbisect.core.ThrowingFunction;
 import com.carilt01.modsbisect.core.Unit;
 import com.carilt01.modsbisect.core.algorithms.IsolationAlgorithm;
+import net.bytebuddy.implementation.bytecode.Throw;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -11,8 +13,8 @@ import java.util.function.Function;
 
 public class QuickXPlainAlgorithm implements IsolationAlgorithm<QXPSaveState> {
 
-    private final Map<String, Unit> allUnits = new HashMap<>();
-    private @Nullable  Function<List<Unit>, Boolean> testFunc = null;
+    private final Map<String, Unit> allUnits = new LinkedHashMap<>();
+    private @Nullable ThrowingFunction<List<Unit>, Boolean> testFunc = null;
     private Map<String, Boolean> testCache = new HashMap<>();
     private List<QXPStackFrame> stack = new ArrayList<>();
     private List<List<String>> results = new ArrayList<>();
@@ -89,7 +91,7 @@ public class QuickXPlainAlgorithm implements IsolationAlgorithm<QXPSaveState> {
         return earlyDependencyGraph;
     }
 
-    public List<Unit> run(@NotNull List<Unit> units, @NotNull Function<List<Unit>, Boolean> testFunc, @Nullable QXPSaveState loadState) {
+    public List<Unit> run(@NotNull List<Unit> units, @NotNull ThrowingFunction<List<Unit>, Boolean> testFunc, @Nullable QXPSaveState loadState) throws Exception {
         Map<String, Integer> depthMap = this.computeDependencyDepth(units);
 
         List<Unit> sortedUnits = new ArrayList<>(units);
@@ -132,7 +134,7 @@ public class QuickXPlainAlgorithm implements IsolationAlgorithm<QXPSaveState> {
         this.saveFunc.accept(state);
     }
 
-    private boolean executeTest(List<String> unitIDs) {
+    private boolean executeTest(List<String> unitIDs) throws Exception {
 
         String cacheKey = String.join("|", unitIDs);
         if (this.testCache.containsKey(cacheKey)) {
@@ -152,7 +154,7 @@ public class QuickXPlainAlgorithm implements IsolationAlgorithm<QXPSaveState> {
         return result;
     }
 
-    private List<Unit> qxpRun(@Nullable QXPSaveState loadedState) {
+    private List<Unit> qxpRun(@Nullable QXPSaveState loadedState) throws Exception {
         if (!this.loadState(loadedState)) {
             List<String> allIDs = new ArrayList<>(this.allUnits.keySet());
 
@@ -168,7 +170,7 @@ public class QuickXPlainAlgorithm implements IsolationAlgorithm<QXPSaveState> {
             QXPStackFrame current = this.stack.get(this.stack.size() - 1);
             QXPIsolationStage stage = current.stage;
 
-            if (current.delta.isEmpty() && !this.executeTest(current.bg)) {
+            if (!current.delta.isEmpty() && !this.executeTest(current.bg)) {
                 this.stack.remove(this.stack.size() - 1);
                 this.results.add(new ArrayList<>());
                 continue;

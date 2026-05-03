@@ -30,9 +30,15 @@ public class StateIO {
 
         try {
             this.loadFile(this.stateFile);
+
+            if (this.fileData.states == null) {
+                throw new IOException("Corrupt file");
+            }
+
             this.fileLoadSuccess = true;
-            this.hasLoaded = false;
+            this.hasLoaded = true;
         } catch (IOException e) {
+            System.out.println("error: failed to load save states: " + e.getMessage());
             this.fileLoadSuccess = false;
             this.fileData = new StatesFileData();
             this.hasLoaded = true;

@@ -16,6 +16,9 @@ dependencies {
     implementation 'org.tomlj:tomlj:1.1.1'
     compileOnly 'org.jetbrains:annotations:24.1.0'
     implementation 'com.github.kwhat:jnativehook:2.2.2'
+    implementation 'com.github.oshi:oshi-core:6.4.0'
+    implementation 'net.java.dev.jna:jna:5.13.0'
+    implementation 'net.java.dev.jna:jna-platform:5.13.0'
 }
 
 test {
